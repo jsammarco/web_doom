@@ -22,7 +22,8 @@ const ASSET_PATHS = {
   wall: "assets/wall.png",
   door: "assets/door.png",
   floor: "assets/floor.png",
-  enemy: "assets/enemy.png",
+  enemy: "assets/enemy_sprites.png",
+  enemyDead: "assets/enemy_dead.png",
   key: "assets/keycard.png",
   medkit: "assets/medkit.png",
   exit: "assets/exit.png",
@@ -49,6 +50,16 @@ const WEAPON_SHEET = {
   animationFrames: [1, 2, 3, 6, 7, 6, 3, 2, 1, 0],
   animationSeconds: 0.44,
 };
+const ENEMY_SHEET = {
+  columns: 4,
+  rows: 2,
+  frames: 8,
+  idleFrame: 0,
+  walkFrames: [1, 2, 3, 4, 5],
+  attackFrames: [6, 7],
+  walkFrameSeconds: 0.15,
+  attackSeconds: 0.34,
+};
 
 const LEVEL_ROWS = [
   "###################",
@@ -72,6 +83,8 @@ const MOVE_SPEED = 2.55;
 const TURN_SPEED = 2.35;
 const PLAYER_RADIUS = 0.24;
 const EXTRA_RANDOM_ENEMIES = 2;
+const STARTING_AMMO = 24;
+const ENEMY_HEALTH = 100;
 const ENEMY_KILL_POINTS = 100;
 const ALL_HOSTILES_BONUS = 300;
 const DISCOVERY_RAYS = 96;
@@ -79,6 +92,9 @@ const DISCOVERY_DISTANCE = 8.5;
 const MONSTER_SOUND_MIN_DELAY = 0.7;
 const MONSTER_SOUND_MAX_DELAY = 1.9;
 const MONSTER_SOUND_MAX_DISTANCE = 8.5;
+const MONSTER_NOTICE_DISTANCE = 6.5;
+const MONSTER_CHASE_DISTANCE = 14;
+const MONSTER_PATH_REFRESH_SECONDS = 0.28;
 
 const keys = {
   forward: false,
@@ -99,6 +115,7 @@ const game = {
   floorBuffer: null,
   assets: {},
   weaponFrames: [],
+  enemyFrames: [],
   shotSound: null,
   music: null,
   musicFadeFrame: null,
@@ -117,7 +134,7 @@ const game = {
   discovered: [],
   totalEnemies: 0,
   hasKey: false,
-  ammo: 48,
+  ammo: STARTING_AMMO,
   score: 0,
   cleanSweepAwarded: false,
   muzzle: 0,
@@ -149,6 +166,28 @@ function prepareWeaponFrames(img) {
     const sy = Math.round((row * img.height) / WEAPON_SHEET.rows);
     const sw = Math.round(((col + 1) * img.width) / WEAPON_SHEET.columns) - sx;
     const sh = Math.round(((row + 1) * img.height) / WEAPON_SHEET.rows) - sy;
+    const frameCanvas = document.createElement("canvas");
+    const frameCtx = frameCanvas.getContext("2d");
+
+    frameCanvas.width = sw;
+    frameCanvas.height = sh;
+    frameCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    frames.push(frameCanvas);
+  }
+
+  return frames;
+}
+
+function prepareEnemyFrames(img) {
+  const frames = [];
+
+  for (let frame = 0; frame < ENEMY_SHEET.frames; frame += 1) {
+    const col = frame % ENEMY_SHEET.columns;
+    const row = Math.floor(frame / ENEMY_SHEET.columns);
+    const sx = Math.round((col * img.width) / ENEMY_SHEET.columns);
+    const sy = Math.round((row * img.height) / ENEMY_SHEET.rows);
+    const sw = Math.round(((col + 1) * img.width) / ENEMY_SHEET.columns) - sx;
+    const sh = Math.round(((row + 1) * img.height) / ENEMY_SHEET.rows) - sy;
     const frameCanvas = document.createElement("canvas");
     const frameCtx = frameCanvas.getContext("2d");
 
@@ -287,6 +326,8 @@ function effectiveMusicVolume() {
 }
 
 function syncMusicControls() {
+  if (!musicMuteButton || !musicVolumeControl) return;
+
   musicVolumeControl.value = Math.round(game.musicVolume * 100);
   musicMuteButton.classList.toggle("is-muted", game.musicMuted || game.musicVolume === 0);
   musicMuteButton.setAttribute("aria-label", game.musicMuted ? "Unmute music" : "Mute music");
@@ -380,10 +421,15 @@ function createEnemy(x, y) {
     type: "enemy",
     x: x + 0.5,
     y: y + 0.5,
-    hp: 70,
+    hp: ENEMY_HEALTH,
     alive: true,
     attackTimer: 0,
+    attackAnimTimer: 0,
     hurtTimer: 0,
+    animationTime: Math.random() * ENEMY_SHEET.walkFrames.length * ENEMY_SHEET.walkFrameSeconds,
+    moving: false,
+    path: [],
+    pathTimer: 0,
     monsterAlerted: false,
     monsterSound: null,
     monsterSoundDelay: 0,
@@ -488,7 +534,7 @@ function resetLevel() {
   });
   game.player.health = 100;
   game.hasKey = false;
-  game.ammo = 48;
+  game.ammo = STARTING_AMMO;
   game.score = 0;
   game.cleanSweepAwarded = false;
   game.muzzle = 0;
@@ -632,7 +678,6 @@ function updateMonsterSounds(dt) {
 
     if (!enemy.monsterAlerted && isEnemyVisibleToPlayer(enemy)) {
       enemy.monsterAlerted = true;
-      enemy.monsterSoundDelay = 0;
     }
 
     if (!enemy.monsterAlerted) continue;
@@ -653,6 +698,92 @@ function updateMonsterSounds(dt) {
 
 function isInBounds(x, y) {
   return y >= 0 && y < game.map.length && x >= 0 && x < game.map[0].length;
+}
+
+function isWalkableCell(x, y) {
+  return isInBounds(x, y) && !isBlockingCell(x, y);
+}
+
+function cellKey(x, y) {
+  return `${x},${y}`;
+}
+
+function findPath(startX, startY, goalX, goalY) {
+  if (!isWalkableCell(startX, startY) || !isWalkableCell(goalX, goalY)) {
+    return [];
+  }
+
+  if (startX === goalX && startY === goalY) {
+    return [{ x: goalX, y: goalY }];
+  }
+
+  const queue = [{ x: startX, y: startY }];
+  const cameFrom = new Map([[cellKey(startX, startY), null]]);
+  const directions = [
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0, y: 1 },
+    { x: 0, y: -1 },
+  ];
+
+  for (let i = 0; i < queue.length; i += 1) {
+    const current = queue[i];
+
+    for (const direction of directions) {
+      const next = { x: current.x + direction.x, y: current.y + direction.y };
+      const key = cellKey(next.x, next.y);
+
+      if (cameFrom.has(key) || !isWalkableCell(next.x, next.y)) continue;
+
+      cameFrom.set(key, current);
+
+      if (next.x === goalX && next.y === goalY) {
+        const path = [next];
+        let step = current;
+
+        while (step) {
+          path.push(step);
+          step = cameFrom.get(cellKey(step.x, step.y));
+        }
+
+        return path.reverse();
+      }
+
+      queue.push(next);
+    }
+  }
+
+  return [];
+}
+
+function enemyPathTarget(enemy, dt) {
+  enemy.pathTimer = Math.max(0, enemy.pathTimer - dt);
+
+  const enemyCellX = Math.floor(enemy.x);
+  const enemyCellY = Math.floor(enemy.y);
+  const playerCellX = Math.floor(game.player.x);
+  const playerCellY = Math.floor(game.player.y);
+
+  if (
+    enemy.pathTimer === 0 ||
+    !enemy.path.length ||
+    enemy.path[enemy.path.length - 1]?.x !== playerCellX ||
+    enemy.path[enemy.path.length - 1]?.y !== playerCellY
+  ) {
+    enemy.path = findPath(enemyCellX, enemyCellY, playerCellX, playerCellY);
+    enemy.pathTimer = MONSTER_PATH_REFRESH_SECONDS;
+  }
+
+  if (enemy.path.length < 2) {
+    return { x: game.player.x, y: game.player.y };
+  }
+
+  const nextStepIndex = enemy.path.findIndex((step) => (
+    step.x === enemyCellX && step.y === enemyCellY
+  )) + 1;
+  const nextStep = enemy.path[Math.max(1, nextStepIndex)] || enemy.path[1];
+
+  return { x: nextStep.x + 0.5, y: nextStep.y + 0.5 };
 }
 
 function markDiscovered(x, y) {
@@ -793,20 +924,36 @@ function updateEnemies(dt) {
     if (enemy.type !== "enemy" || !enemy.alive) continue;
 
     enemy.attackTimer = Math.max(0, enemy.attackTimer - dt);
+    enemy.attackAnimTimer = Math.max(0, enemy.attackAnimTimer - dt);
     enemy.hurtTimer = Math.max(0, enemy.hurtTimer - dt);
+    enemy.moving = false;
 
     const dx = game.player.x - enemy.x;
     const dy = game.player.y - enemy.y;
     const dist = Math.hypot(dx, dy);
+    const canSeePlayer = dist < MONSTER_NOTICE_DISTANCE && hasLineOfSight(enemy.x, enemy.y, game.player.x, game.player.y);
 
-    if (dist < 6.5 && hasLineOfSight(enemy.x, enemy.y, game.player.x, game.player.y)) {
+    if (canSeePlayer) {
+      enemy.monsterAlerted = true;
+    }
+
+    if (enemy.monsterAlerted && dist < MONSTER_CHASE_DISTANCE) {
       if (dist > 0.82) {
+        const target = canSeePlayer
+          ? { x: game.player.x, y: game.player.y }
+          : enemyPathTarget(enemy, dt);
+        const chaseDx = target.x - enemy.x;
+        const chaseDy = target.y - enemy.y;
+        const chaseDist = Math.max(0.001, Math.hypot(chaseDx, chaseDy));
         const speed = (enemy.hurtTimer > 0 ? 0.28 : 0.72) * dt;
-        moveActor(enemy, (dx / dist) * speed, (dy / dist) * speed, 0.22);
+        moveActor(enemy, (chaseDx / chaseDist) * speed, (chaseDy / chaseDist) * speed, 0.22);
+        enemy.moving = true;
+        enemy.animationTime += dt;
       } else if (enemy.attackTimer === 0) {
         game.player.health = Math.max(0, game.player.health - 12);
         game.damageFlash = 0.28;
         enemy.attackTimer = 0.82;
+        enemy.attackAnimTimer = ENEMY_SHEET.attackSeconds;
         playSoundFx("punch");
         setMessage("DAMAGE", 0.45);
 
@@ -1030,9 +1177,36 @@ function drawWorld() {
   }
 }
 
+function enemyFrame(entity) {
+  if (entity.attackAnimTimer > 0) {
+    const progress = 1 - entity.attackAnimTimer / ENEMY_SHEET.attackSeconds;
+    const frameIndex = Math.min(
+      ENEMY_SHEET.attackFrames.length - 1,
+      Math.floor(progress * ENEMY_SHEET.attackFrames.length),
+    );
+    return ENEMY_SHEET.attackFrames[frameIndex];
+  }
+
+  if (entity.moving) {
+    const frameIndex = Math.floor(entity.animationTime / ENEMY_SHEET.walkFrameSeconds) % ENEMY_SHEET.walkFrames.length;
+    return ENEMY_SHEET.walkFrames[frameIndex];
+  }
+
+  return ENEMY_SHEET.idleFrame;
+}
+
 function spriteDefinition(entity) {
   if (entity.type === "enemy") {
-    return { img: game.assets.enemy, scale: 0.92, yOffset: 0.08, alpha: entity.hurtTimer > 0 ? 0.62 : 1 };
+    if (!entity.alive) {
+      return { img: game.assets.enemyDead, scale: 0.72, yOffset: 0.23, alpha: 0.9 };
+    }
+
+    return {
+      img: game.enemyFrames[enemyFrame(entity)] || game.assets.enemy,
+      scale: 0.92,
+      yOffset: 0.08,
+      alpha: entity.hurtTimer > 0 ? 0.62 : 1,
+    };
   }
 
   if (entity.type === "key") {
@@ -1049,7 +1223,7 @@ function spriteDefinition(entity) {
 function visibleSprites() {
   return game.entities
     .filter((entity) => {
-      if (entity.type === "enemy") return entity.alive;
+      if (entity.type === "enemy") return true;
       if (entity.type === "exit") return true;
       return !entity.picked;
     })
@@ -1260,6 +1434,25 @@ function setKeyState(code, pressed) {
   if (code === "KeyD") keys.right = pressed;
 }
 
+function isPointInsideElement(event, element) {
+  if (!element) return false;
+
+  const rect = element.getBoundingClientRect();
+  return (
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom
+  );
+}
+
+function isMusicControlPointer(event) {
+  return (
+    isPointInsideElement(event, musicMuteButton) ||
+    isPointInsideElement(event, musicVolumeControl)
+  );
+}
+
 window.addEventListener("keydown", (event) => {
   if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "Enter"].includes(event.code)) {
     event.preventDefault();
@@ -1286,7 +1479,10 @@ window.addEventListener("blur", () => {
   });
 });
 
-canvas.addEventListener("pointerdown", () => {
+canvas.addEventListener("pointerdown", (event) => {
+  if (event.target !== canvas) return;
+  if (isMusicControlPointer(event)) return;
+
   if (game.state === "playing") {
     fireWeapon();
   }
@@ -1294,17 +1490,31 @@ canvas.addEventListener("pointerdown", () => {
 
 startButton.addEventListener("click", startLevel);
 restartButton.addEventListener("click", startLevel);
-musicMuteButton.addEventListener("click", () => {
-  game.musicMuted = !game.musicMuted;
-  applyMusicSettings();
-});
+if (musicMuteButton) {
+  musicMuteButton.addEventListener("click", () => {
+    game.musicMuted = !game.musicMuted;
+    applyMusicSettings();
+  });
+}
 
-musicVolumeControl.addEventListener("input", () => {
-  game.musicVolume = Number(musicVolumeControl.value) / 100;
-  if (game.musicVolume > 0) {
-    game.musicMuted = false;
-  }
-  applyMusicSettings();
+if (musicVolumeControl) {
+  musicVolumeControl.addEventListener("input", () => {
+    game.musicVolume = Number(musicVolumeControl.value) / 100;
+    if (game.musicVolume > 0) {
+      game.musicMuted = false;
+    }
+    applyMusicSettings();
+  });
+}
+
+[musicMuteButton, musicVolumeControl].forEach((control) => {
+  if (!control) return;
+
+  ["pointerdown", "pointerup", "click", "touchstart", "touchend"].forEach((eventName) => {
+    control.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    }, { capture: true });
+  });
 });
 
 function configureTouchControls() {
@@ -1352,6 +1562,7 @@ preloadAssets(ASSET_PATHS)
     game.assets = assets;
     game.floorTexture = prepareTextureData(assets.floor);
     game.weaponFrames = prepareWeaponFrames(assets.weapon);
+    game.enemyFrames = prepareEnemyFrames(assets.enemy);
     setupGunshotAudio();
     setupMusicAudio();
     setupSoundFxAudio();
