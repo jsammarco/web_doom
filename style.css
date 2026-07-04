@@ -127,6 +127,64 @@ button {
   color: var(--amber);
 }
 
+.music-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.music-mute {
+  position: relative;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.music-mute::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 5px;
+  width: 6px;
+  height: 8px;
+  background: var(--paper);
+  box-shadow: 6px -4px 0 -2px var(--paper), 6px 4px 0 -2px var(--paper);
+}
+
+.music-mute::after {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 4px;
+  width: 7px;
+  height: 10px;
+  border: solid var(--cyan);
+  border-width: 0 2px 0 0;
+  border-radius: 50%;
+}
+
+.music-mute.is-muted::after {
+  left: 14px;
+  top: 1px;
+  width: 2px;
+  height: 16px;
+  border: 0;
+  border-radius: 0;
+  background: var(--danger);
+  rotate: 45deg;
+}
+
+.music-control input[type="range"] {
+  width: 82px;
+  accent-color: var(--cyan);
+  cursor: pointer;
+}
+
 .hud-status {
   max-width: 220px;
   color: var(--cyan);
@@ -329,6 +387,14 @@ button {
     min-height: 29px;
     padding: 6px 7px;
     font-size: 0.62rem;
+  }
+
+  .music-control {
+    gap: 6px;
+  }
+
+  .music-control input[type="range"] {
+    width: 62px;
   }
 
   .hud-status {

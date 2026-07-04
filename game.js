@@ -8,6 +8,8 @@ const ammoValue = document.getElementById("ammoValue");
 const keyValue = document.getElementById("keyValue");
 const enemyValue = document.getElementById("enemyValue");
 const scoreValue = document.getElementById("scoreValue");
+const musicMuteButton = document.getElementById("musicMuteButton");
+const musicVolumeControl = document.getElementById("musicVolumeControl");
 const statusText = document.getElementById("statusText");
 const startScreen = document.getElementById("startScreen");
 const endScreen = document.getElementById("endScreen");
@@ -29,6 +31,16 @@ const ASSET_PATHS = {
 
 const GUN_SHOT_SRC = "assets/gun_shot.mp3";
 const MUSIC_SRC = "assets/music.mp3";
+const MUSIC_VOLUME = 0.34;
+const MUSIC_FADE_SECONDS = 1;
+const MUSIC_END_FADE_DELAY_SECONDS = 1;
+const SOUND_FX = {
+  complete: { src: "assets/complete.mp3", volume: 0.78 },
+  key: { src: "assets/key.mp3", volume: 0.82 },
+  monster: { src: "assets/monster.mp3", volume: 0.62 },
+  monsterDies: { src: "assets/monster_dies.mp3", volume: 0.78 },
+  punch: { src: "assets/punch.mp3", volume: 0.82 },
+};
 const WEAPON_SHEET = {
   columns: 4,
   rows: 2,
@@ -64,6 +76,9 @@ const ENEMY_KILL_POINTS = 100;
 const ALL_HOSTILES_BONUS = 300;
 const DISCOVERY_RAYS = 96;
 const DISCOVERY_DISTANCE = 8.5;
+const MONSTER_SOUND_MIN_DELAY = 0.7;
+const MONSTER_SOUND_MAX_DELAY = 1.9;
+const MONSTER_SOUND_MAX_DISTANCE = 8.5;
 
 const keys = {
   forward: false,
@@ -86,6 +101,11 @@ const game = {
   weaponFrames: [],
   shotSound: null,
   music: null,
+  musicFadeFrame: null,
+  musicFadeTimeout: null,
+  musicVolume: MUSIC_VOLUME,
+  musicMuted: false,
+  sounds: {},
   player: {
     x: 1.5,
     y: 1.5,
@@ -166,7 +186,22 @@ function setupMusicAudio() {
   game.music = new Audio(MUSIC_SRC);
   game.music.loop = true;
   game.music.preload = "auto";
-  game.music.volume = 0.34;
+  game.music.volume = 0;
+}
+
+function setupSoundFxAudio() {
+  game.sounds = Object.fromEntries(
+    Object.entries(SOUND_FX).map(([name, config]) => {
+      const sound = new Audio(config.src);
+      sound.preload = "auto";
+      sound.volume = config.volume;
+      return [name, sound];
+    }),
+  );
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function playGunshot() {
@@ -182,13 +217,143 @@ function playGunshot() {
   }
 }
 
-function playMusic() {
-  if (!game.music) return;
+function playSoundFx(name, volumeScale = 1) {
+  const baseSound = game.sounds[name];
+  if (!baseSound) return null;
 
-  const playback = game.music.play();
+  const sound = baseSound.cloneNode();
+  sound.volume = clamp(baseSound.volume * volumeScale, 0, 1);
+  sound.currentTime = 0;
+
+  const playback = sound.play();
   if (playback) {
     playback.catch(() => {});
   }
+
+  return sound;
+}
+
+function cancelMusicFade() {
+  if (game.musicFadeFrame !== null) {
+    cancelAnimationFrame(game.musicFadeFrame);
+    game.musicFadeFrame = null;
+  }
+
+  if (game.musicFadeTimeout !== null) {
+    clearTimeout(game.musicFadeTimeout);
+    game.musicFadeTimeout = null;
+  }
+}
+
+function fadeMusicTo(targetVolume, seconds, options = {}) {
+  if (!game.music) return;
+
+  cancelMusicFade();
+
+  if (options.playFirst) {
+    const playback = game.music.play();
+    if (playback) {
+      playback.catch(() => {});
+    }
+  }
+
+  const music = game.music;
+  const startVolume = music.volume;
+  const duration = Math.max(0, seconds * 1000);
+  const startTime = performance.now();
+
+  const step = (time) => {
+    const progress = duration === 0 ? 1 : clamp((time - startTime) / duration, 0, 1);
+    music.volume = startVolume + (targetVolume - startVolume) * progress;
+
+    if (progress < 1) {
+      game.musicFadeFrame = requestAnimationFrame(step);
+      return;
+    }
+
+    music.volume = targetVolume;
+    game.musicFadeFrame = null;
+
+    if (options.pauseWhenDone) {
+      music.pause();
+    }
+  };
+
+  game.musicFadeFrame = requestAnimationFrame(step);
+}
+
+function effectiveMusicVolume() {
+  return game.musicMuted ? 0 : game.musicVolume;
+}
+
+function syncMusicControls() {
+  musicVolumeControl.value = Math.round(game.musicVolume * 100);
+  musicMuteButton.classList.toggle("is-muted", game.musicMuted || game.musicVolume === 0);
+  musicMuteButton.setAttribute("aria-label", game.musicMuted ? "Unmute music" : "Mute music");
+  musicMuteButton.title = game.musicMuted ? "Unmute music" : "Mute music";
+}
+
+function applyMusicSettings() {
+  syncMusicControls();
+
+  if (!game.music) return;
+
+  const targetVolume = effectiveMusicVolume();
+  if (game.state === "playing" && !game.music.paused) {
+    fadeMusicTo(targetVolume, 0.18);
+  } else {
+    game.music.volume = targetVolume;
+  }
+}
+
+function playMusic() {
+  fadeMusicTo(effectiveMusicVolume(), MUSIC_FADE_SECONDS, { playFirst: true });
+}
+
+function fadeOutMusic() {
+  cancelMusicFade();
+  game.musicFadeTimeout = setTimeout(() => {
+    game.musicFadeTimeout = null;
+    fadeMusicTo(0, MUSIC_FADE_SECONDS, { pauseWhenDone: true });
+  }, MUSIC_END_FADE_DELAY_SECONDS * 1000);
+}
+
+function monsterSoundDelay() {
+  return MONSTER_SOUND_MIN_DELAY + Math.random() * (MONSTER_SOUND_MAX_DELAY - MONSTER_SOUND_MIN_DELAY);
+}
+
+function monsterVolumeScale(enemy) {
+  const dist = distance(game.player, enemy);
+  return clamp(1 - dist / MONSTER_SOUND_MAX_DISTANCE, 0.08, 1);
+}
+
+function playMonsterSound(enemy) {
+  const sound = playSoundFx("monster", monsterVolumeScale(enemy));
+  if (!sound) return;
+
+  enemy.monsterSound = sound;
+  sound.addEventListener("ended", () => {
+    if (enemy.monsterSound === sound) {
+      enemy.monsterSound = null;
+      enemy.monsterSoundDelay = monsterSoundDelay();
+    }
+  }, { once: true });
+}
+
+function stopMonsterSound(enemy) {
+  if (!enemy.monsterSound) return;
+
+  enemy.monsterSound.pause();
+  enemy.monsterSound.currentTime = 0;
+  enemy.monsterSound = null;
+}
+
+function stopAllMonsterSounds() {
+  game.entities.forEach((entity) => {
+    if (entity.type === "enemy") {
+      stopMonsterSound(entity);
+    }
+  });
 }
 
 function resizeCanvas() {
@@ -219,6 +384,9 @@ function createEnemy(x, y) {
     alive: true,
     attackTimer: 0,
     hurtTimer: 0,
+    monsterAlerted: false,
+    monsterSound: null,
+    monsterSoundDelay: 0,
   };
 }
 
@@ -345,6 +513,9 @@ function finishLevel() {
     game.cleanSweepAwarded = true;
   }
 
+  stopAllMonsterSounds();
+  fadeOutMusic();
+  playSoundFx("complete");
   game.state = "won";
   endSubtitle.textContent = clearedAllHostiles
     ? `CLEAN SWEEP BONUS - SCORE ${game.score}`
@@ -354,6 +525,8 @@ function finishLevel() {
 }
 
 function loseLevel() {
+  stopAllMonsterSounds();
+  fadeOutMusic();
   game.state = "lost";
   endSubtitle.textContent = "MISSION FAILED";
   endTitle.textContent = "TRY AGAIN";
@@ -432,6 +605,52 @@ function hasLineOfSight(x1, y1, x2, y2) {
   return true;
 }
 
+function isEnemyVisibleToPlayer(enemy) {
+  if (!enemy.alive) return false;
+
+  const dx = enemy.x - game.player.x;
+  const dy = enemy.y - game.player.y;
+  const dist = Math.hypot(dx, dy);
+  const targetAngle = Math.atan2(dy, dx);
+  const visibleAngle = FOV * 0.58 + Math.min(0.16, 0.28 / Math.max(1, dist));
+
+  return (
+    dist <= MONSTER_SOUND_MAX_DISTANCE &&
+    Math.abs(angleDiff(targetAngle, game.player.angle)) <= visibleAngle &&
+    hasLineOfSight(game.player.x, game.player.y, enemy.x, enemy.y)
+  );
+}
+
+function updateMonsterSounds(dt) {
+  for (const enemy of game.entities) {
+    if (enemy.type !== "enemy") continue;
+
+    if (!enemy.alive) {
+      stopMonsterSound(enemy);
+      continue;
+    }
+
+    if (!enemy.monsterAlerted && isEnemyVisibleToPlayer(enemy)) {
+      enemy.monsterAlerted = true;
+      enemy.monsterSoundDelay = 0;
+    }
+
+    if (!enemy.monsterAlerted) continue;
+
+    if (enemy.monsterSound) {
+      const baseSound = game.sounds.monster;
+      const baseVolume = baseSound ? baseSound.volume : SOUND_FX.monster.volume;
+      enemy.monsterSound.volume = clamp(baseVolume * monsterVolumeScale(enemy), 0, 1);
+      continue;
+    }
+
+    enemy.monsterSoundDelay = Math.max(0, enemy.monsterSoundDelay - dt);
+    if (enemy.monsterSoundDelay === 0) {
+      playMonsterSound(enemy);
+    }
+  }
+}
+
 function isInBounds(x, y) {
   return y >= 0 && y < game.map.length && x >= 0 && x < game.map[0].length;
 }
@@ -479,6 +698,7 @@ function pickupItems() {
     if (entity.type === "key" && dist < 0.62) {
       entity.picked = true;
       game.hasKey = true;
+      playSoundFx("key");
       setMessage("KEY SECURED", 1.5);
     }
 
@@ -537,6 +757,8 @@ function fireWeapon() {
 
     if (best.enemy.hp <= 0) {
       best.enemy.alive = false;
+      stopMonsterSound(best.enemy);
+      playSoundFx("monsterDies");
       game.score += ENEMY_KILL_POINTS;
       setMessage(livingEnemies() === 0 ? "ALL HOSTILES DOWN" : "BONUS +100", 1);
     }
@@ -585,6 +807,7 @@ function updateEnemies(dt) {
         game.player.health = Math.max(0, game.player.health - 12);
         game.damageFlash = 0.28;
         enemy.attackTimer = 0.82;
+        playSoundFx("punch");
         setMessage("DAMAGE", 0.45);
 
         if (game.player.health <= 0) {
@@ -601,6 +824,7 @@ function update(dt) {
   updatePlayer(dt);
   revealMap();
   updateEnemies(dt);
+  updateMonsterSounds(dt);
   pickupItems();
 
   game.muzzle = Math.max(0, game.muzzle - dt);
@@ -1070,6 +1294,18 @@ canvas.addEventListener("pointerdown", () => {
 
 startButton.addEventListener("click", startLevel);
 restartButton.addEventListener("click", startLevel);
+musicMuteButton.addEventListener("click", () => {
+  game.musicMuted = !game.musicMuted;
+  applyMusicSettings();
+});
+
+musicVolumeControl.addEventListener("input", () => {
+  game.musicVolume = Number(musicVolumeControl.value) / 100;
+  if (game.musicVolume > 0) {
+    game.musicMuted = false;
+  }
+  applyMusicSettings();
+});
 
 function configureTouchControls() {
   const shouldShow = window.matchMedia("(pointer: coarse)").matches || window.innerWidth <= 760;
@@ -1118,6 +1354,8 @@ preloadAssets(ASSET_PATHS)
     game.weaponFrames = prepareWeaponFrames(assets.weapon);
     setupGunshotAudio();
     setupMusicAudio();
+    setupSoundFxAudio();
+    syncMusicControls();
     resetLevel();
     resizeCanvas();
     resizeMinimap();
