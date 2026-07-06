@@ -1434,25 +1434,6 @@ function setKeyState(code, pressed) {
   if (code === "KeyD") keys.right = pressed;
 }
 
-function isPointInsideElement(event, element) {
-  if (!element) return false;
-
-  const rect = element.getBoundingClientRect();
-  return (
-    event.clientX >= rect.left &&
-    event.clientX <= rect.right &&
-    event.clientY >= rect.top &&
-    event.clientY <= rect.bottom
-  );
-}
-
-function isMusicControlPointer(event) {
-  return (
-    isPointInsideElement(event, musicMuteButton) ||
-    isPointInsideElement(event, musicVolumeControl)
-  );
-}
-
 window.addEventListener("keydown", (event) => {
   if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "Enter"].includes(event.code)) {
     event.preventDefault();
@@ -1477,15 +1458,6 @@ window.addEventListener("blur", () => {
   Object.keys(keys).forEach((key) => {
     keys[key] = false;
   });
-});
-
-canvas.addEventListener("pointerdown", (event) => {
-  if (event.target !== canvas) return;
-  if (isMusicControlPointer(event)) return;
-
-  if (game.state === "playing") {
-    fireWeapon();
-  }
 });
 
 startButton.addEventListener("click", startLevel);
