@@ -8,53 +8,55 @@
   </head>
   <body>
     <main class="game-shell" id="gameShell">
-      <canvas id="gameCanvas" aria-label="Iron Maze game screen"></canvas>
+      <div class="game-frame">
+        <canvas id="gameCanvas" aria-label="Iron Maze game screen"></canvas>
 
-      <div class="screen-vignette" aria-hidden="true"></div>
-      <div class="crosshair" aria-hidden="true"></div>
+        <div class="screen-vignette" aria-hidden="true"></div>
+        <div class="crosshair" aria-hidden="true"></div>
 
-      <header class="hud" aria-live="polite">
-        <div class="hud-cluster">
-          <span class="hud-item">HEALTH <strong id="healthValue">100</strong></span>
-          <span class="hud-item">AMMO <strong id="ammoValue">24</strong></span>
-          <span class="hud-item">KEY <strong id="keyValue">NO</strong></span>
-          <span class="hud-item">HOSTILES <strong id="enemyValue">0</strong></span>
-          <span class="hud-item">SCORE <strong id="scoreValue">0</strong></span>
-          <span class="hud-item music-control">
-            <button class="music-mute" id="musicMuteButton" type="button" aria-label="Mute music" title="Mute music"></button>
-            <input id="musicVolumeControl" type="range" min="0" max="100" value="34" aria-label="Music volume" />
-          </span>
-        </div>
-        <div class="hud-status" id="statusText">LEVEL ONE</div>
-      </header>
+        <header class="hud" aria-live="polite">
+          <div class="hud-cluster">
+            <span class="hud-item">HEALTH <strong id="healthValue">100</strong></span>
+            <span class="hud-item">AMMO <strong id="ammoValue">24</strong></span>
+            <span class="hud-item">KEY <strong id="keyValue">NO</strong></span>
+            <span class="hud-item">HOSTILES <strong id="enemyValue">0</strong></span>
+            <span class="hud-item">SCORE <strong id="scoreValue">0</strong></span>
+            <span class="hud-item music-control">
+              <button class="music-mute" id="musicMuteButton" type="button" aria-label="Mute music" title="Mute music"></button>
+              <input id="musicVolumeControl" type="range" min="0" max="100" value="34" aria-label="Music volume" />
+            </span>
+          </div>
+          <div class="hud-status" id="statusText">LEVEL ONE</div>
+        </header>
 
-      <canvas class="minimap" id="minimapCanvas" aria-label="Discovered mini map"></canvas>
+        <canvas class="minimap" id="minimapCanvas" aria-label="Discovered mini map"></canvas>
 
-      <section class="overlay is-active" id="startScreen" aria-label="Start screen">
-        <div class="overlay-panel">
-          <p class="eyebrow">LEVEL ONE</p>
-          <h1>IRON MAZE</h1>
-          <button class="primary-button" id="startButton" type="button">ENTER</button>
-        </div>
-      </section>
+        <section class="overlay is-active" id="startScreen" aria-label="Start screen">
+          <div class="overlay-panel">
+            <p class="eyebrow">LEVEL ONE</p>
+            <h1>IRON MAZE</h1>
+            <button class="primary-button" id="startButton" type="button">ENTER</button>
+          </div>
+        </section>
 
-      <section class="overlay" id="endScreen" aria-label="End screen">
-        <div class="overlay-panel">
-          <p class="eyebrow" id="endSubtitle">LEVEL ONE COMPLETE</p>
-          <h1 id="endTitle">Made By Consulting Joe</h1>
-          <button class="primary-button" id="restartButton" type="button">RESTART</button>
-        </div>
-      </section>
+        <section class="overlay" id="endScreen" aria-label="End screen">
+          <div class="overlay-panel">
+            <p class="eyebrow" id="endSubtitle">LEVEL ONE COMPLETE</p>
+            <h1 id="endTitle">Made By Consulting Joe</h1>
+            <button class="primary-button" id="restartButton" type="button">RESTART</button>
+          </div>
+        </section>
 
-      <nav class="mobile-controls" id="mobileControls" aria-label="On-screen controls">
-        <div class="dpad" aria-hidden="false">
-          <button class="control-button control-up" data-action="forward" type="button" aria-label="Move forward"></button>
-          <button class="control-button control-left" data-action="left" type="button" aria-label="Turn left"></button>
-          <button class="control-button control-down" data-action="backward" type="button" aria-label="Move backward"></button>
-          <button class="control-button control-right" data-action="right" type="button" aria-label="Turn right"></button>
-        </div>
-        <button class="control-button fire-button" data-action="fire" type="button" aria-label="Fire"></button>
-      </nav>
+        <nav class="mobile-controls" id="mobileControls" aria-label="On-screen controls">
+          <div class="dpad" aria-hidden="false">
+            <button class="control-button control-up" data-action="forward" type="button" aria-label="Move forward"></button>
+            <button class="control-button control-left" data-action="left" type="button" aria-label="Turn left"></button>
+            <button class="control-button control-down" data-action="backward" type="button" aria-label="Move backward"></button>
+            <button class="control-button control-right" data-action="right" type="button" aria-label="Turn right"></button>
+          </div>
+          <button class="control-button fire-button" data-action="fire" type="button" aria-label="Fire"></button>
+        </nav>
+      </div>
     </main>
 
     <script src="game.js" defer></script>

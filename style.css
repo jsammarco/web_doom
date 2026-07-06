@@ -18,7 +18,7 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: var(--coal);
+  background: #000;
   font-family: "Arial Black", Impact, system-ui, sans-serif;
   letter-spacing: 0;
   touch-action: none;
@@ -32,12 +32,26 @@ button {
 .game-shell {
   position: fixed;
   inset: 0;
-  min-width: 320px;
-  min-height: 320px;
+  display: grid;
+  place-items: center;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 36%, rgba(133, 29, 22, 0.24), transparent 40%),
-    linear-gradient(180deg, #141313 0%, #080908 100%);
+  background: #000;
+}
+
+.game-frame {
+  --game-size: min(100vw, 100vh);
+
+  position: relative;
+  width: var(--game-size);
+  height: var(--game-size);
+  overflow: hidden;
+  background: var(--coal);
+}
+
+@supports (height: 100svh) {
+  .game-frame {
+    --game-size: min(100vw, 100svh);
+  }
 }
 
 #gameCanvas {
@@ -111,7 +125,7 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  max-width: min(720px, 72vw);
+  max-width: min(720px, 72%);
 }
 
 .hud-item,
@@ -207,7 +221,7 @@ button {
   z-index: 3;
   top: max(62px, calc(env(safe-area-inset-top) + 62px));
   right: max(14px, env(safe-area-inset-right));
-  width: min(176px, 34vw);
+  width: min(176px, 34%);
   aspect-ratio: 19 / 14;
   border: 1px solid rgba(72, 228, 206, 0.42);
   background: rgba(5, 6, 6, 0.74);
@@ -235,7 +249,7 @@ button {
 }
 
 .overlay-panel {
-  width: min(520px, 92vw);
+  width: min(520px, 92%);
   padding: 34px 28px 30px;
   border: 2px solid rgba(240, 180, 77, 0.7);
   border-radius: 8px;
@@ -253,7 +267,7 @@ button {
 .overlay h1 {
   margin: 0 0 24px;
   color: var(--paper);
-  font-size: clamp(2.3rem, 9vw, 5rem);
+  font-size: clamp(2.3rem, 9vmin, 5rem);
   line-height: 0.92;
   text-shadow: 0 5px 0 #000, 0 0 26px rgba(224, 68, 53, 0.38);
 }
@@ -413,7 +427,7 @@ button {
 
   .minimap {
     top: max(54px, calc(env(safe-area-inset-top) + 54px));
-    width: min(138px, 38vw);
+    width: min(138px, 38%);
   }
 
   .dpad {
@@ -440,7 +454,7 @@ button {
 
   .overlay h1 {
     margin-bottom: 14px;
-    font-size: clamp(2rem, 8vw, 3.8rem);
+    font-size: clamp(2rem, 8vmin, 3.8rem);
   }
 
   .mobile-controls {
